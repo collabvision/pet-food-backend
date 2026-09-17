@@ -18,6 +18,7 @@ import { validate } from "../../middleware/validate.middleware.js";
 import { authenticate } from "../../middleware/auth.middleware.js";
 import { authorize } from "../../middleware/role.middleware.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
+import { upload } from "../../middleware/upload.middleware.js";
 
 const router = Router();
 
@@ -42,6 +43,7 @@ router.post(
     "/",
     authenticate,
     authorize("ADMIN"),
+    upload.single("image"),
     validate(createProductSchema),
     asyncHandler(createProductController)
 );
@@ -50,6 +52,7 @@ router.patch(
     "/:productId",
     authenticate,
     authorize("ADMIN"),
+    upload.single("image"),
     validate(updateProductSchema),
     asyncHandler(updateProductController)
 );

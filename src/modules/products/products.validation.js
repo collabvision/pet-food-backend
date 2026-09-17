@@ -34,11 +34,11 @@ export const createProductSchema = z.object({
 
     category: objectIdSchema,
 
-    price: z
+    price: z.coerce
         .number()
         .min(0),
 
-    compareAtPrice: z
+    compareAtPrice: z.coerce
         .number()
         .min(0)
         .nullable()
@@ -62,12 +62,12 @@ export const createProductSchema = z.object({
         .optional()
         .default([]),
 
-    isMedical: z
+    isMedical: z.coerce
         .boolean()
         .optional()
         .default(false),
 
-    requiresPrescription: z
+    requiresPrescription: z.coerce
         .boolean()
         .optional()
         .default(false),
@@ -86,7 +86,7 @@ export const createProductSchema = z.object({
         .optional()
         .default(""),
 
-    isActive: z
+    isActive: z.coerce
         .boolean()
         .optional()
         .default(true)
@@ -121,12 +121,12 @@ export const updateProductSchema = z
 
         category: objectIdSchema.optional(),
 
-        price: z
+        price: z.coerce
             .number()
             .min(0)
             .optional(),
 
-        compareAtPrice: z
+        compareAtPrice: z.coerce
             .number()
             .min(0)
             .nullable()
@@ -150,11 +150,11 @@ export const updateProductSchema = z
             .array(imageSchema)
             .optional(),
 
-        isMedical: z
+        isMedical: z.coerce
             .boolean()
             .optional(),
 
-        requiresPrescription: z
+        requiresPrescription: z.coerce
             .boolean()
             .optional(),
 
@@ -170,7 +170,7 @@ export const updateProductSchema = z
             .max(50)
             .optional(),
 
-        isActive: z
+        isActive: z.coerce
             .boolean()
             .optional()
     })

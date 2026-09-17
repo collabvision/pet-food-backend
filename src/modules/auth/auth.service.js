@@ -57,10 +57,10 @@ export async function register({
             SALT_ROUNDS
         );
 
-    // const verificationCode =
-    //     generateVerificationCode();
+    const verificationCode =
+        generateVerificationCode();
 
-    const verificationCode = "123456"; // for ddevelopment only
+    // const verificationCode = "123456"; // for ddevelopment only
 
     const verificationCodeHash =
         hashToken(verificationCode);
@@ -91,16 +91,16 @@ export async function register({
         });
     }
 
-    // try {
-    //     await sendVerificationEmail(
-    //         email,
-    //         name,
-    //         verificationCode
-    //     );
-    // } catch (error) {
-    //     await deletePendingByEmail(email);
-    //     throw error;
-    // }
+    try {
+        await sendVerificationEmail(
+            email,
+            name,
+            verificationCode
+        );
+    } catch (error) {
+        await deletePendingByEmail(email);
+        throw error;
+    }
 
     return {
         email,
@@ -269,11 +269,11 @@ export async function resendVerificationEmail(
         verificationCodeExpires
     });
 
-    // await sendVerificationEmail(
-    //     pending.email,
-    //     pending.name,
-    //     verificationCode
-    // );
+    await sendVerificationEmail(
+        pending.email,
+        pending.name,
+        verificationCode
+    );
 }
 
 export async function login(

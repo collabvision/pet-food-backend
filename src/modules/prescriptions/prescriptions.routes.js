@@ -1,5 +1,5 @@
 import { Router } from "express";
-import multer from "multer";
+
 
 import {
     uploadPrescriptionController,
@@ -18,26 +18,11 @@ import { validate } from "../../middleware/validate.middleware.js";
 import { authenticate } from "../../middleware/auth.middleware.js";
 import { authorize } from "../../middleware/role.middleware.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
+import { upload } from "../../middleware/upload.middleware.js";
 
 const router = Router();
 
-const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: {
-        fileSize: 5 * 1024 * 1024
-    },
-    fileFilter: (req, file, cb) => {
-        if (file.mimetype !== "image/webp") {
-            return cb(
-                new Error(
-                    "Only WebP prescription images are allowed"
-                )
-            );
-        }
 
-        cb(null, true);
-    }
-});
 
 router.use(authenticate);
 

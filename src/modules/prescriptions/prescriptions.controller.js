@@ -6,15 +6,30 @@ import {
     reviewPrescription
 } from "./prescriptions.service.js";
 
+import { storageProvider, imageProcessor } from "../../providers/storage/index.js";
+
 export async function uploadPrescriptionController(
     req,
     res
 ) {
+    let fileUrl = null;
+    if (req.file) {
+        if (req.file.mimetype.startsWith("image/")) {
+            const processed = await imageProcessor.processImage(req.file.buffer);
+            const uploaded = await storageProvider.uploadImage(processed, req.file.originalname);
+            fileUrl = uploaded.url;
+        } else {
+            // pdf handling or direct upload
+            const uploaded = await storageProvider.uploadImage(req.file.buffer, req.file.originalname);
+            fileUrl = uploaded.url;
+        }
+    }
+
     const prescription =
         await uploadPrescription(
             req.user.id,
             req.body,
-            req.file
+            fileUrl
         );
 
     res.status(201).json({

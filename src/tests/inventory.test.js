@@ -141,108 +141,49 @@ before(async () => {
     });
 
 
-    const adminRegister =
-        await request(
-            "POST",
-            "/api/v1/auth/register",
-            adminUser
-        );
+    const bcrypt = await import("bcryptjs");
 
-    assertSuccess(
-        adminRegister,
-        201
-    );
+    const adminPasswordHash = await bcrypt.default.hash(adminUser.password, 12);
+    await User.create({
+        name: adminUser.name,
+        email: adminUser.email,
+        passwordHash: adminPasswordHash,
+        role: "ADMIN",
+        isEmailVerified: true,
+        isActive: true
+    });
 
-
-    const adminVerify =
-        await request(
-            "POST",
-            "/api/v1/auth/verify-email",
-            {
-                email: adminUser.email,
-                code: "123456"
-            }
-        );
-
-    assertSuccess(
-        adminVerify
-    );
-
-
-    await User.updateOne(
+    const adminLogin = await request(
+        "POST",
+        "/api/v1/auth/login",
         {
-            email: adminUser.email
-        },
-        {
-            $set: {
-                role: "ADMIN"
-            }
+            email: adminUser.email,
+            password: adminUser.password
         }
     );
+    assertSuccess(adminLogin);
+    adminAccessToken = adminLogin.body.data.accessToken;
 
+    const userPasswordHash = await bcrypt.default.hash(normalUser.password, 12);
+    await User.create({
+        name: normalUser.name,
+        email: normalUser.email,
+        passwordHash: userPasswordHash,
+        role: "USER",
+        isEmailVerified: true,
+        isActive: true
+    });
 
-    const adminLogin =
-        await request(
-            "POST",
-            "/api/v1/auth/login",
-            {
-                email: adminUser.email,
-                password: adminUser.password
-            }
-        );
-
-    assertSuccess(
-        adminLogin
+    const userLogin = await request(
+        "POST",
+        "/api/v1/auth/login",
+        {
+            email: normalUser.email,
+            password: normalUser.password
+        }
     );
-
-    adminAccessToken =
-        adminLogin.body.data.accessToken;
-
-
-    const userRegister =
-        await request(
-            "POST",
-            "/api/v1/auth/register",
-            normalUser
-        );
-
-    assertSuccess(
-        userRegister,
-        201
-    );
-
-
-    const userVerify =
-        await request(
-            "POST",
-            "/api/v1/auth/verify-email",
-            {
-                email: normalUser.email,
-                code: "123456"
-            }
-        );
-
-    assertSuccess(
-        userVerify
-    );
-
-
-    const userLogin =
-        await request(
-            "POST",
-            "/api/v1/auth/login",
-            {
-                email: normalUser.email,
-                password: normalUser.password
-            }
-        );
-
-    assertSuccess(
-        userLogin
-    );
-
-    userAccessToken =
-        userLogin.body.data.accessToken;
+    assertSuccess(userLogin);
+    userAccessToken = userLogin.body.data.accessToken;
 
 
     const category =

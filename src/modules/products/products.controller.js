@@ -7,12 +7,21 @@ import {
     deleteProductService
 } from "./products.service.js";
 
+import { storageProvider, imageProcessor } from "../../providers/storage/index.js";
+
 export async function createProductController(
     req,
     res
 ) {
+    const data = { ...req.body };
+    if (req.file) {
+        const processedImage = await imageProcessor.processImage(req.file.buffer);
+        const uploaded = await storageProvider.uploadImage(processedImage, req.file.originalname);
+        data.images = [uploaded];
+    }
+
     const product =
-        await createProductService(req.body);
+        await createProductService(data);
 
     res.status(201).json({
         success: true,
@@ -68,10 +77,17 @@ export async function updateProductController(
     req,
     res
 ) {
+    const data = { ...req.body };
+    if (req.file) {
+        const processedImage = await imageProcessor.processImage(req.file.buffer);
+        const uploaded = await storageProvider.uploadImage(processedImage, req.file.originalname);
+        data.images = [uploaded];
+    }
+
     const product =
         await updateProductService(
             req.params.productId,
-            req.body
+            data
         );
 
     res.status(200).json({

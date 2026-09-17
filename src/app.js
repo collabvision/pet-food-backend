@@ -4,6 +4,7 @@ import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 
+
 import { env } from "./config/env.js";
 import { errorMiddleware } from "./middleware/error.middleware.js";
 
@@ -53,6 +54,28 @@ app.use(
     limit: "1mb",
   }),
 );
+
+// Custom NoSQL injection sanitizer (express-mongo-sanitize is incompatible with Express 5)
+// Strips keys starting with '$' or containing '.' from req.body, req.params
+function sanitizeObj(obj) {
+    if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+        for (const key of Object.keys(obj)) {
+            if (key.startsWith("$") || key.includes(".")) {
+                delete obj[key];
+            } else {
+                sanitizeObj(obj[key]);
+            }
+        }
+    } else if (Array.isArray(obj)) {
+        obj.forEach(sanitizeObj);
+    }
+}
+
+app.use((req, res, next) => {
+    sanitizeObj(req.body);
+    sanitizeObj(req.params);
+    next();
+});
 
 app.get("/health", (req, res) => {
   res.json({

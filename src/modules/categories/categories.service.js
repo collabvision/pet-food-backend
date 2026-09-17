@@ -8,6 +8,8 @@ import {
     deleteCategoryById
 } from "./categories.repository.js";
 
+import { Product } from "../products/product.model.js";
+
 import { ApiError } from "../../utils/ApiError.js";
 
 export async function createCategoryService(data) {
@@ -70,6 +72,11 @@ export async function deleteCategoryService(categoryId) {
 
     if (!category) {
         throw new ApiError(404, "Category not found");
+    }
+
+    const productCount = await Product.countDocuments({ category: categoryId });
+    if (productCount > 0) {
+        throw new ApiError(400, "Cannot delete category containing products");
     }
 
     await deleteCategoryById(categoryId);
