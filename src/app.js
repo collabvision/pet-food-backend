@@ -22,13 +22,42 @@ import notificationsRoutes from "./modules/notifications/notifications.routes.js
 
 const app = express();
 
-app.use(helmet());
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (Postman, curl, SSR server fetches)
+    if (!origin) return callback(null, true);
 
+    const allowedOrigins = [
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "http://127.0.0.1:3000",
+      // Add your production domain here e.g. "https://furnest.com"
+    ];
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS: Origin '${origin}' is not allowed`));
+  },
+  credentials: true,   // Required for httpOnly cookie (refresh token)
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  exposedHeaders: ["Set-Cookie"],
+};
+
+// ⚠️ CORS must come BEFORE helmet so its headers aren't overwritten
+app.use(cors(corsOptions));
+
+// Handle OPTIONS preflight for ALL routes (Express 5 requires named wildcard)
+app.options(/\/.*/, cors(corsOptions));
+
+// Helmet — configured to allow cross-origin resource sharing
 app.use(
-  cors({
-    origin: env.clientUrl,
-    credentials: true,
-  }),
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" }, // allow cross-origin fetches
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+    contentSecurityPolicy: false, // CSP is handled by Next.js next.config.js headers
+  })
 );
 
 const limiter = rateLimit({

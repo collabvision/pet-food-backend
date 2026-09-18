@@ -5,3 +5,4 @@ uploads/*
 logs/
 coverage/
 .DS_Store
+frontend/
