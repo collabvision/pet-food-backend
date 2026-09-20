@@ -58,19 +58,30 @@ export async function loginController(req, res) {
         req.body.password
     );
 
+    res.cookie("refreshToken", result.refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+        path: "/api/v1/auth"
+    });
+
     res.status(200).json({
         success: true,
         message: "Login successful",
-        data: result
+        data: {
+            user: result.user,
+            accessToken: result.accessToken
+        }
     });
 }
 
 export async function refreshController(req, res) {
-    const { refreshToken } = req.body;
+    const refreshToken = req.cookies.refreshToken;
 
     if (!refreshToken) {
         throw new ApiError(
-            400,
+            401,
             "Refresh token is required"
         );
     }
@@ -78,21 +89,39 @@ export async function refreshController(req, res) {
     const result =
         await refreshAccessToken(refreshToken);
 
+    res.cookie("refreshToken", result.refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+        path: "/api/v1/auth"
+    });
+
     res.status(200).json({
         success: true,
         message: "Access token refreshed",
-        data: result
+        data: {
+            accessToken: result.accessToken
+        }
     });
 }
 
 export async function logoutController(req, res) {
     await logout(req.user.id);
 
+    res.clearCookie("refreshToken", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/api/v1/auth"
+    });
+
     res.status(200).json({
         success: true,
         message: "Logout successful"
     });
 }
+
 
 export async function forgotPasswordController(
     req,
