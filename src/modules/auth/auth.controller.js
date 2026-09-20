@@ -58,13 +58,22 @@ export async function loginController(req, res) {
         req.body.password
     );
 
+    console.log("LOGIN RESULT:");
+    console.log("user:", result.user);
+    console.log("refresh token exists:", !!result.refreshToken);
+
     res.cookie("refreshToken", result.refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
+        secure: false, // TEMPORARY
         sameSite: "lax",
         maxAge: 30 * 24 * 60 * 60 * 1000,
-        path: "/api/v1/auth"
+        path: "/"
     });
+
+    console.log(
+        "SET-COOKIE:",
+        res.getHeader("Set-Cookie")
+    );
 
     res.status(200).json({
         success: true,
@@ -75,7 +84,6 @@ export async function loginController(req, res) {
         }
     });
 }
-
 export async function refreshController(req, res) {
     const refreshToken = req.cookies.refreshToken;
 
@@ -94,7 +102,7 @@ export async function refreshController(req, res) {
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
         maxAge: 30 * 24 * 60 * 60 * 1000,
-        path: "/api/v1/auth"
+        path: "/"
     });
 
     res.status(200).json({

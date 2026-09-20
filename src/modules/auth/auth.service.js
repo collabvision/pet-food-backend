@@ -338,70 +338,49 @@ export async function login(
     };
 }
 
-export async function refreshAccessToken(
-    refreshToken
-) {
-    let payload;
+export async function refreshAccessToken(refreshToken) {
+  let payload;
 
-    try {
-        payload =
-            verifyRefreshToken(
-                refreshToken
-            );
-    } catch {
-        throw new ApiError(
-            401,
-            "Invalid or expired refresh token"
-        );
-    }
+  try {
+    payload = verifyRefreshToken(refreshToken);
+    console.log("REFRESH JWT VALID:", payload);
+  } catch (error) {
+    console.log("JWT VERIFY FAILED:", error.message);
+    throw new ApiError(401, "Invalid refresh token");
+  }
 
-    const user =
-        await findByIdWithSensitiveFields(
-            payload.userId
-        );
+  const user = await findByIdWithSensitiveFields(payload.userId);
 
-    if (!user || !user.isActive) {
-        throw new ApiError(
-            401,
-            "Invalid refresh token"
-        );
-    }
+  console.log("USER FOUND:", !!user);
+  console.log("REFRESH HASH EXISTS:", !!user?.refreshTokenHash);
 
-    if (!user.refreshTokenHash) {
-        throw new ApiError(
-            401,
-            "Invalid refresh token"
-        );
-    }
+  if (!user) {
+    throw new ApiError(401, "Invalid refresh token");
+  }
 
-    const incomingHash =
-        hashToken(refreshToken);
+  const receivedHash = hashToken(refreshToken);
 
-    if (
-        user.refreshTokenHash !==
-        incomingHash
-    ) {
-        throw new ApiError(
-            401,
-            "Invalid refresh token"
-        );
-    }
+  console.log("STORED HASH EXISTS:", !!user.refreshTokenHash);
+  console.log("HASH MATCH:", user.refreshTokenHash === receivedHash);
 
-    const newAccessToken =
-        generateAccessToken(user);
+  if (
+    !user.refreshTokenHash ||
+    user.refreshTokenHash !== receivedHash
+  ) {
+    throw new ApiError(401, "Invalid refresh token");
+  }
 
-    const newRefreshToken =
-        generateRefreshToken(user);
+  const newAccessToken = generateAccessToken(user);
+  const newRefreshToken = generateRefreshToken(user);
 
-    user.refreshTokenHash =
-        hashToken(newRefreshToken);
+  user.refreshTokenHash = hashToken(newRefreshToken);
 
-    await saveUser(user);
+  await saveUser(user);
 
-    return {
-        accessToken: newAccessToken,
-        refreshToken: newRefreshToken
-    };
+  return {
+    accessToken: newAccessToken,
+    refreshToken: newRefreshToken,
+  };
 }
 
 export async function logout(userId) {

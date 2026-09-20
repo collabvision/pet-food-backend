@@ -24,25 +24,26 @@ const app = express();
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (Postman, curl, SSR server fetches)
     if (!origin) return callback(null, true);
 
     const allowedOrigins = [
       "http://localhost:3000",
       "http://localhost:3001",
       "http://127.0.0.1:3000",
-      // Add your production domain here e.g. "https://furnest.com"
     ];
 
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
+
     return callback(new Error(`CORS: Origin '${origin}' is not allowed`));
   },
-  credentials: true,   // Required for httpOnly cookie (refresh token)
+
+  credentials: true,
+
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+
   allowedHeaders: ["Content-Type", "Authorization"],
-  exposedHeaders: ["Set-Cookie"],
 };
 
 // ⚠️ CORS must come BEFORE helmet so its headers aren't overwritten
