@@ -19,19 +19,29 @@ export const createReturnSchema = z.object({
                 reason: z
                     .string()
                     .trim()
-                    .min(3)
+                    .min(1)
                     .max(1000)
+                    .optional()
+                    .default("Return requested")
             })
         )
         .min(1),
 
-    reason: z.literal("DEFECTIVE_PRODUCT"),
+    reason: z.enum([
+        "DEFECTIVE_PRODUCT",
+        "WRONG_ITEM",
+        "NOT_AS_DESCRIBED",
+        "QUALITY_ISSUE",
+        "SIZE_FIT_ISSUE",
+        "OTHER"
+    ]).default("DEFECTIVE_PRODUCT"),
 
     description: z
         .string()
         .trim()
-        .min(3)
         .max(2000)
+        .optional()
+        .default("")
 });
 
 export const updateReturnStatusSchema = z.object({

@@ -38,6 +38,17 @@ export class RazorpayProvider extends PaymentProvider {
         });
     }
 
+    async refundPayment(paymentId, amount, notes = {}) {
+        const payload = {};
+        if (amount) {
+            payload.amount = Math.round(Number(amount) * 100);
+        }
+        if (Object.keys(notes).length > 0) {
+            payload.notes = notes;
+        }
+        return this.client.payments.refund(paymentId, payload);
+    }
+
     verifyPaymentSignature({
         orderId,
         paymentId,

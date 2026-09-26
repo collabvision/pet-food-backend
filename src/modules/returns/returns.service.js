@@ -13,8 +13,11 @@ import {
 } from "./returns.repository.js";
 
 import {
-    findOrderById
+    findOrderById,
+    saveOrder
 } from "../orders/orders.repository.js";
+import { paymentProvider } from "../../providers/payment/index.js";
+import { findByOrderId as findPaymentByOrderId } from "../payments/payments.repository.js";
 
 function generateReturnNumber() {
     const random = crypto.randomBytes(4).toString("hex").toUpperCase();
@@ -59,12 +62,7 @@ export async function requestReturn(userId, data) {
         );
     }
 
-    if (order.paymentStatus !== "PAID") {
-        throw new ApiError(
-            400,
-            "Only paid orders can be returned"
-        );
-    }
+    // Removed strict PAID check – COD delivered orders should also be returnable
 
     const existingReturn = await findReturnByOrderAndUser(
         data.orderId,
@@ -126,19 +124,29 @@ export async function requestReturn(userId, data) {
         orderId: order._id,
         userId,
         items: data.items,
-        reason: "DEFECTIVE_PRODUCT",
-        description: data.description,
+        reason: data.reason || "DEFECTIVE_PRODUCT",
+        description: data.description || data.comments || "",
         refundAmount,
         status: "REQUESTED",
         statusHistory: [
             {
                 status: "REQUESTED",
                 changedBy: userId,
-                note: "Return requested for defective product",
+                note: `Return requested: ${data.reason || "DEFECTIVE_PRODUCT"}`,
                 changedAt: new Date()
             }
         ]
     });
+
+    // Also update order status to RETURN_REQUESTED
+    order.orderStatus = "RETURN_REQUESTED";
+    order.statusHistory.push({
+        status: "RETURN_REQUESTED",
+        note: "User requested a return",
+        changedBy: userId,
+        changedAt: new Date()
+    });
+    await order.save();
 
     return returnDocument;
 }
@@ -270,8 +278,42 @@ export async function updateReturnStatus(
     }
 
     if (data.refundPaymentId !== undefined) {
-        returnDocument.refundPaymentId =
-            data.refundPaymentId;
+        returnDocument.refundPaymentId = data.refundPaymentId;
+    }
+
+    // Process Razorpay refund if status is REFUNDED and not manually processed
+    if (data.status === "REFUNDED") {
+        const order = await findOrderById(returnDocument.orderId);
+        
+        if (order) {
+            // Check if online payment
+            if (order.paymentStatus === "PAID" || order.paymentStatus === "AUTHORIZED") {
+                const payment = await findPaymentByOrderId(order._id);
+                if (payment && payment.razorpayPaymentId) {
+                    try {
+                        const refund = await paymentProvider.refundPayment(
+                            payment.razorpayPaymentId,
+                            data.refundAmount,
+                            { returnId: returnDocument._id.toString() }
+                        );
+                        // Save the refund id from Razorpay
+                        returnDocument.refundPaymentId = refund.id;
+                    } catch (error) {
+                        throw new ApiError(500, `Razorpay refund failed: ${error.message}`);
+                    }
+                }
+            }
+
+            // Update order status to RETURNED
+            order.orderStatus = "RETURNED";
+            order.statusHistory.push({
+                status: "RETURNED",
+                note: `Return completed and refunded via admin`,
+                changedBy: adminId,
+                changedAt: new Date()
+            });
+            await saveOrder(order);
+        }
     }
 
     return returnDocument.save();
