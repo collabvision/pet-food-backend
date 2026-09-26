@@ -23,6 +23,30 @@ async function getProduct(productId) {
     return product;
 }
 
+function formatCart(cart) {
+    const items = cart.items.map(item => {
+        const product = item.productId;
+        const quantity = item.quantity;
+        const price = product ? (product.price || 0) : 0;
+        return {
+            product,
+            quantity,
+            price
+        };
+    });
+
+    const totalItems = items.reduce((acc, item) => acc + item.quantity, 0);
+    const totalAmount = items.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+
+    return {
+        _id: cart._id,
+        userId: cart.userId,
+        items,
+        totalItems,
+        totalAmount
+    };
+}
+
 export async function getCart(userId) {
     const cart = await findOrCreateCart(userId);
 
@@ -30,7 +54,7 @@ export async function getCart(userId) {
         path: "items.productId"
     });
 
-    return cart;
+    return formatCart(cart);
 }
 
 export async function addToCart(userId, productId, quantity) {
@@ -73,7 +97,7 @@ export async function addToCart(userId, productId, quantity) {
         path: "items.productId"
     });
 
-    return cart;
+    return formatCart(cart);
 }
 
 export async function updateCartItem(
@@ -109,7 +133,7 @@ export async function updateCartItem(
         path: "items.productId"
     });
 
-    return cart;
+    return formatCart(cart);
 }
 
 export async function removeCartItem(userId, productId) {
@@ -131,7 +155,7 @@ export async function removeCartItem(userId, productId) {
         path: "items.productId"
     });
 
-    return cart;
+    return formatCart(cart);
 }
 
 export async function clearCart(userId) {
@@ -141,5 +165,5 @@ export async function clearCart(userId) {
 
     await saveCart(cart);
 
-    return cart;
+    return formatCart(cart);
 }

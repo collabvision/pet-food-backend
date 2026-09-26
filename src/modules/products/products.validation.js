@@ -24,7 +24,8 @@ export const createProductSchema = z.object({
         .regex(
             /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
             "Slug must contain only lowercase letters, numbers and hyphens"
-        ),
+        )
+        .optional(),
 
     description: z
         .string()

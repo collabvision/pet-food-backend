@@ -67,6 +67,12 @@ const productSchema = new mongoose.Schema(
                     type: String,
                     required: true
                 },
+                localUrl: {
+                    type: String
+                },
+                cloudinaryUrl: {
+                    type: String
+                },
                 publicId: {
                     type: String,
                     default: null
@@ -108,6 +114,18 @@ const productSchema = new mongoose.Schema(
         timestamps: true
     }
 );
+
+productSchema.pre("validate", function (next) {
+    if (this.name && (!this.slug || this.isModified("name"))) {
+        const baseSlug = this.name
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/(^-|-$)+/g, "");
+        // Append a short random string to ensure uniqueness
+        this.slug = baseSlug + "-" + Math.random().toString(36).substring(2, 6);
+    }
+    next();
+});
 
 productSchema.index({
     name: "text",

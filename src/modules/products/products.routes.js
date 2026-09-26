@@ -43,7 +43,7 @@ router.post(
     "/",
     authenticate,
     authorize("ADMIN"),
-    upload.single("image"),
+    upload.array("images", 5),
     validate(createProductSchema),
     asyncHandler(createProductController)
 );
@@ -52,7 +52,7 @@ router.patch(
     "/:productId",
     authenticate,
     authorize("ADMIN"),
-    upload.single("image"),
+    upload.array("images", 5),
     validate(updateProductSchema),
     asyncHandler(updateProductController)
 );

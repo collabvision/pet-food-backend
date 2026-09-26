@@ -76,10 +76,48 @@ export async function createProductService(data) {
 }
 
 
-export async function getProductsService() {
-    return findAllProducts({
-        isActive: true
-    });
+export async function getProductsService(query = {}) {
+    const filter = { isActive: true };
+
+    if (query.q) {
+        filter.$text = { $search: query.q };
+    }
+
+    if (query.petType || query.category) {
+        // Import Category model at the top of the file ideally, but for simplicity here we can require it
+        const { Category } = await import('../categories/category.model.js');
+        const catFilter = {};
+        
+        if (query.petType) {
+            const types = query.petType.split(',').map(t => new RegExp('^' + t.trim() + '$', 'i'));
+            catFilter.name = { $in: types };
+        }
+        
+        if (query.category) {
+            const slugs = query.category.split(',');
+            catFilter.slug = { $in: slugs };
+        }
+
+        const matchedCategories = await Category.find(catFilter).select('_id');
+        filter.category = { $in: matchedCategories.map(c => c._id) };
+    }
+
+    if (query.brand) {
+        const brands = query.brand.split(',').map(b => b.trim());
+        filter.brand = { $in: brands.map(b => new RegExp('^' + b + '$', 'i')) };
+    }
+
+    if (query.minPrice || query.maxPrice) {
+        filter.price = {};
+        if (query.minPrice) filter.price.$gte = Number(query.minPrice);
+        if (query.maxPrice) filter.price.$lte = Number(query.maxPrice);
+    }
+
+    if (query.vetApproved === 'true') {
+        filter.isMedical = true;
+    }
+
+    return findAllProducts(filter, query);
 }
 
 

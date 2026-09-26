@@ -7,17 +7,36 @@ import {
     deleteProductService
 } from "./products.service.js";
 
-import { storageProvider, imageProcessor } from "../../providers/storage/index.js";
+import { CloudinaryProvider } from "../../providers/storage/CloudinaryProvider.js";
+import { LocalStorageProvider } from "../../providers/storage/LocalStorageProvider.js";
+import { ImageProcessor } from "../../providers/storage/ImageProcessor.js";
+
+const localProvider = new LocalStorageProvider();
+const cloudProvider = new CloudinaryProvider();
 
 export async function createProductController(
     req,
     res
 ) {
     const data = { ...req.body };
-    if (req.file) {
-        const processedImage = await imageProcessor.processImage(req.file.buffer);
-        const uploaded = await storageProvider.uploadImage(processedImage, req.file.originalname);
-        data.images = [uploaded];
+    if (req.files && req.files.length > 0) {
+        data.images = await Promise.all(
+            req.files.map(async (file) => {
+                const processedImage = await ImageProcessor.processImage(file.buffer);
+                
+                const [localRes, cloudRes] = await Promise.all([
+                    localProvider.uploadImage(processedImage, file.originalname),
+                    cloudProvider.uploadImage(processedImage, file.originalname)
+                ]);
+
+                return {
+                    url: cloudRes.url,
+                    localUrl: localRes.url,
+                    cloudinaryUrl: cloudRes.url,
+                    publicId: cloudRes.publicId
+                };
+            })
+        );
     }
 
     const product =
@@ -35,7 +54,7 @@ export async function getProductsController(
     res
 ) {
     const products =
-        await getProductsService();
+        await getProductsService(req.query);
 
     res.status(200).json({
         success: true,
@@ -78,10 +97,24 @@ export async function updateProductController(
     res
 ) {
     const data = { ...req.body };
-    if (req.file) {
-        const processedImage = await imageProcessor.processImage(req.file.buffer);
-        const uploaded = await storageProvider.uploadImage(processedImage, req.file.originalname);
-        data.images = [uploaded];
+    if (req.files && req.files.length > 0) {
+        data.images = await Promise.all(
+            req.files.map(async (file) => {
+                const processedImage = await ImageProcessor.processImage(file.buffer);
+                
+                const [localRes, cloudRes] = await Promise.all([
+                    localProvider.uploadImage(processedImage, file.originalname),
+                    cloudProvider.uploadImage(processedImage, file.originalname)
+                ]);
+
+                return {
+                    url: cloudRes.url,
+                    localUrl: localRes.url,
+                    cloudinaryUrl: cloudRes.url,
+                    publicId: cloudRes.publicId
+                };
+            })
+        );
     }
 
     const product =
