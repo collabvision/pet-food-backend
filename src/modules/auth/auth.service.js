@@ -1,28 +1,28 @@
 import bcrypt from "bcryptjs";
 
 import {
-    createUser,
-    findByEmail,
-    findById,
-    findByIdWithSensitiveFields,
-    updateById,
-    saveUser
+  createUser,
+  findByEmail,
+  findById,
+  findByIdWithSensitiveFields,
+  updateById,
+  saveUser,
 } from "./auth.repository.js";
 
 import {
-    generateAccessToken,
-    generateRefreshToken,
-    generateVerificationCode,
-    generateRandomToken,
-    hashToken,
-    verifyRefreshToken
+  generateAccessToken,
+  generateRefreshToken,
+  generateVerificationCode,
+  generateRandomToken,
+  hashToken,
+  verifyRefreshToken,
 } from "./auth.tokens.js";
 
 import {
-    createPendingRegistration,
-    findPendingByEmail,
-    deletePendingByEmail,
-    updatePendingByEmail
+  createPendingRegistration,
+  findPendingByEmail,
+  deletePendingByEmail,
+  updatePendingByEmail,
 } from "./pendingRegistration.repository.js";
 
 import { ApiError } from "../../utils/ApiError.js";
@@ -30,164 +30,113 @@ import { emailProvider } from "../../providers/email/index.js";
 
 const SALT_ROUNDS = 12;
 
-const VERIFICATION_CODE_EXPIRY =
-    10 * 60 * 1000;
+const VERIFICATION_CODE_EXPIRY = 10 * 60 * 1000;
 
-const PASSWORD_RESET_EXPIRY =
-    15 * 60 * 1000;
+const PASSWORD_RESET_EXPIRY = 15 * 60 * 1000;
 
-export async function register({
-    name,
+export async function register({ name, email, password }) {
+  const existingUser = await findByEmail(email);
+
+  if (existingUser) {
+    throw new ApiError(409, "Email is already registered");
+  }
+
+  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+
+  const verificationCode = generateVerificationCode();
+
+  // const verificationCode = "123456"; // for ddevelopment only
+
+  const verificationCodeHash = hashToken(verificationCode);
+
+  const verificationCodeExpires = new Date(
+    Date.now() + VERIFICATION_CODE_EXPIRY,
+  );
+
+  const existingPending = await findPendingByEmail(email);
+
+  if (existingPending) {
+    await updatePendingByEmail(email, {
+      name,
+      passwordHash,
+      verificationCodeHash,
+      verificationCodeExpires,
+    });
+  } else {
+    await createPendingRegistration({
+      name,
+      email,
+      passwordHash,
+      verificationCodeHash,
+      verificationCodeExpires,
+    });
+  }
+
+  try {
+    await sendVerificationEmail(email, name, verificationCode);
+  } catch (error) {
+    await deletePendingByEmail(email);
+    throw error;
+  }
+
+  return {
     email,
-    password
-}) {
-    const existingUser =
-        await findByEmail(email);
-
-    if (existingUser) {
-        throw new ApiError(
-            409,
-            "Email is already registered"
-        );
-    }
-
-    const passwordHash =
-        await bcrypt.hash(
-            password,
-            SALT_ROUNDS
-        );
-
-    const verificationCode =
-        generateVerificationCode();
-
-    // const verificationCode = "123456"; // for ddevelopment only
-
-    const verificationCodeHash =
-        hashToken(verificationCode);
-
-    const verificationCodeExpires =
-        new Date(
-            Date.now() +
-            VERIFICATION_CODE_EXPIRY
-        );
-
-    const existingPending =
-        await findPendingByEmail(email);
-
-    if (existingPending) {
-        await updatePendingByEmail(email, {
-            name,
-            passwordHash,
-            verificationCodeHash,
-            verificationCodeExpires
-        });
-    } else {
-        await createPendingRegistration({
-            name,
-            email,
-            passwordHash,
-            verificationCodeHash,
-            verificationCodeExpires
-        });
-    }
-
-    try {
-        await sendVerificationEmail(
-            email,
-            name,
-            verificationCode
-        );
-    } catch (error) {
-        await deletePendingByEmail(email);
-        throw error;
-    }
-
-    return {
-        email,
-        verificationRequired: true
-    };
+    verificationRequired: true,
+  };
 }
 
-export async function verifyEmail(
-    email,
-    code
-) {
-    const pending =
-        await findPendingByEmail(email);
+export async function verifyEmail(email, code) {
+  const pending = await findPendingByEmail(email);
 
-    if (!pending) {
-        throw new ApiError(
-            400,
-            "Invalid or expired verification code"
-        );
-    }
+  if (!pending) {
+    throw new ApiError(400, "Invalid or expired verification code");
+  }
 
-    if (
-        pending.verificationCodeExpires <
-        new Date()
-    ) {
-        await deletePendingByEmail(email);
-
-        throw new ApiError(
-            400,
-            "Invalid or expired verification code"
-        );
-    }
-
-    const codeHash =
-        hashToken(code);
-
-    if (
-        codeHash !==
-        pending.verificationCodeHash
-    ) {
-        throw new ApiError(
-            400,
-            "Invalid verification code"
-        );
-    }
-
-    const existingUser =
-        await findByEmail(email);
-
-    if (existingUser) {
-        await deletePendingByEmail(email);
-
-        throw new ApiError(
-            409,
-            "Email is already registered"
-        );
-    }
-
-    const user = await createUser({
-        name: pending.name,
-        email: pending.email,
-        passwordHash: pending.passwordHash,
-        role: "USER",
-        isEmailVerified: true
-    });
-
+  if (pending.verificationCodeExpires < new Date()) {
     await deletePendingByEmail(email);
 
-    return sanitizeUser(user);
+    throw new ApiError(400, "Invalid or expired verification code");
+  }
+
+  const codeHash = hashToken(code);
+
+  if (codeHash !== pending.verificationCodeHash) {
+    throw new ApiError(400, "Invalid verification code");
+  }
+
+  const existingUser = await findByEmail(email);
+
+  if (existingUser) {
+    await deletePendingByEmail(email);
+
+    throw new ApiError(409, "Email is already registered");
+  }
+
+  const user = await createUser({
+    name: pending.name,
+    email: pending.email,
+    passwordHash: pending.passwordHash,
+    role: "USER",
+    isEmailVerified: true,
+  });
+
+  await deletePendingByEmail(email);
+
+  return sanitizeUser(user);
 }
 
-async function sendVerificationEmail(
-    email,
-    name,
-    code
-) {
-    await emailProvider.sendEmail({
-        to: email,
-        subject: "Verify your email - My Store",
+async function sendVerificationEmail(email, name, code) {
+  await emailProvider.sendEmail({
+    to: email,
+    subject: "Verify your email - My Store",
 
-        text:
-            `Hello ${name},\n\n` +
-            `Your verification code is: ${code}\n\n` +
-            `This code expires in 10 minutes.\n\n` +
-            `If you did not create this account, ignore this email.`,
+    text:
+      `Hello ${name},\n\n` +
+      `Your verification code is: ${code}\n\n` +
+      `This code expires in 10 minutes.\n\n` +
+      `If you did not create this account, ignore this email.`,
 
-        html: `
+    html: `
             <div style="
                 font-family:Arial,sans-serif;
                 max-width:600px;
@@ -224,118 +173,77 @@ async function sendVerificationEmail(
                 </p>
 
             </div>
-        `
-    });
+        `,
+  });
 }
 
-export async function resendVerificationEmail(
-    email
-) {
-    const existingUser =
-        await findByEmail(email);
+export async function resendVerificationEmail(email) {
+  const existingUser = await findByEmail(email);
 
-    if (existingUser) {
-        if (existingUser.isEmailVerified) {
-            throw new ApiError(
-                400,
-                "Email is already verified"
-            );
-        }
-
-        return;
+  if (existingUser) {
+    if (existingUser.isEmailVerified) {
+      throw new ApiError(400, "Email is already verified");
     }
 
-    const pending =
-        await findPendingByEmail(email);
+    return;
+  }
 
-    if (!pending) {
-        return;
-    }
+  const pending = await findPendingByEmail(email);
 
-    const verificationCode =
-        generateVerificationCode();
+  if (!pending) {
+    return;
+  }
 
-    const verificationCodeHash =
-        hashToken(verificationCode);
+  const verificationCode = generateVerificationCode();
 
-    const verificationCodeExpires =
-        new Date(
-            Date.now() +
-            VERIFICATION_CODE_EXPIRY
-        );
+  const verificationCodeHash = hashToken(verificationCode);
 
-    await updatePendingByEmail(email, {
-        verificationCodeHash,
-        verificationCodeExpires
-    });
+  const verificationCodeExpires = new Date(
+    Date.now() + VERIFICATION_CODE_EXPIRY,
+  );
 
-    await sendVerificationEmail(
-        pending.email,
-        pending.name,
-        verificationCode
-    );
+  await updatePendingByEmail(email, {
+    verificationCodeHash,
+    verificationCodeExpires,
+  });
+
+  await sendVerificationEmail(pending.email, pending.name, verificationCode);
 }
 
-export async function login(
-    email,
-    password
-) {
-    const user =
-        await findByEmail(
-            email,
-            true
-        );
+export async function login(email, password) {
+  const user = await findByEmail(email, true);
 
-    if (!user) {
-        throw new ApiError(
-            401,
-            "Invalid email or password"
-        );
-    }
+  if (!user) {
+    throw new ApiError(401, "Invalid email or password");
+  }
 
-    if (!user.isActive) {
-        throw new ApiError(
-            403,
-            "Account is inactive"
-        );
-    }
+  if (!user.isActive) {
+    throw new ApiError(403, "Account is inactive");
+  }
 
-    const passwordMatch =
-        await bcrypt.compare(
-            password,
-            user.passwordHash
-        );
+  const passwordMatch = await bcrypt.compare(password, user.passwordHash);
 
-    if (!passwordMatch) {
-        throw new ApiError(
-            401,
-            "Invalid email or password"
-        );
-    }
+  if (!passwordMatch) {
+    throw new ApiError(401, "Invalid email or password");
+  }
 
-    if (!user.isEmailVerified) {
-        throw new ApiError(
-            403,
-            "Please verify your email before logging in"
-        );
-    }
+  if (!user.isEmailVerified) {
+    throw new ApiError(403, "Please verify your email before logging in");
+  }
 
-    const accessToken =
-        generateAccessToken(user);
+  const accessToken = generateAccessToken(user);
 
-    const refreshToken =
-        generateRefreshToken(user);
+  const refreshToken = generateRefreshToken(user);
 
-    user.refreshTokenHash =
-        hashToken(refreshToken);
+  user.refreshTokenHash = hashToken(refreshToken);
 
-    await saveUser(user);
+  await saveUser(user);
 
-    return {
-        user: sanitizeUser(user),
-        accessToken,
-        refreshToken
-    };
+  return {
+    user: sanitizeUser(user),
+    accessToken,
+    refreshToken,
+  };
 }
 
 export async function refreshAccessToken(refreshToken) {
@@ -363,10 +271,7 @@ export async function refreshAccessToken(refreshToken) {
   console.log("STORED HASH EXISTS:", !!user.refreshTokenHash);
   console.log("HASH MATCH:", user.refreshTokenHash === receivedHash);
 
-  if (
-    !user.refreshTokenHash ||
-    user.refreshTokenHash !== receivedHash
-  ) {
+  if (!user.refreshTokenHash || user.refreshTokenHash !== receivedHash) {
     throw new ApiError(401, "Invalid refresh token");
   }
 
@@ -384,53 +289,43 @@ export async function refreshAccessToken(refreshToken) {
 }
 
 export async function logout(userId) {
-    await updateById(userId, {
-        refreshTokenHash: null
-    });
+  await updateById(userId, {
+    refreshTokenHash: null,
+  });
 }
 
 export async function forgotPassword(email) {
-    const user =
-        await findByEmail(email);
+  const user = await findByEmail(email);
 
-    if (!user || !user.isActive) {
-        return;
-    }
+  if (!user || !user.isActive) {
+    return;
+  }
 
-    const resetToken =
-        generateRandomToken();
+  const resetToken = generateRandomToken();
 
-    const resetTokenHash =
-        hashToken(resetToken);
+  const resetTokenHash = hashToken(resetToken);
 
-    const resetExpires =
-        new Date(
-            Date.now() +
-            PASSWORD_RESET_EXPIRY
-        );
+  const resetExpires = new Date(Date.now() + PASSWORD_RESET_EXPIRY);
 
-    await updateById(user._id, {
-        passwordResetTokenHash:
-            resetTokenHash,
+  await updateById(user._id, {
+    passwordResetTokenHash: resetTokenHash,
 
-        passwordResetExpires:
-            resetExpires
-    });
+    passwordResetExpires: resetExpires,
+  });
 
-    const resetUrl =
-        `${process.env.CLIENT_URL}/reset-password?token=${resetToken}`;
+  const resetUrl = `${process.env.CLIENT_URL}/reset-password?token=${resetToken}`;
 
-    await emailProvider.sendEmail({
-        to: user.email,
-        subject: "Reset your password - My Store",
+  await emailProvider.sendEmail({
+    to: user.email,
+    subject: "Reset your password - My Store",
 
-        text:
-            `Hello ${user.name},\n\n` +
-            `Reset your password using this link:\n\n` +
-            `${resetUrl}\n\n` +
-            `This link expires in 15 minutes.`,
+    text:
+      `Hello ${user.name},\n\n` +
+      `Reset your password using this link:\n\n` +
+      `${resetUrl}\n\n` +
+      `This link expires in 15 minutes.`,
 
-        html: `
+    html: `
             <div style="
                 font-family:Arial,sans-serif;
                 max-width:600px;
@@ -469,123 +364,248 @@ export async function forgotPassword(email) {
                 </p>
 
             </div>
-        `
-    });
+        `,
+  });
 }
 
-export async function resetPassword(
-    token,
-    newPassword
-) {
-    const tokenHash =
-        hashToken(token);
+export async function resetPassword(token, newPassword) {
+  const tokenHash = hashToken(token);
 
-    const user =
-        await findUserWithPasswordResetToken(
-            tokenHash
-        );
+  const user = await findUserWithPasswordResetToken(tokenHash);
 
-    if (!user) {
-        throw new ApiError(
-            400,
-            "Invalid or expired password reset token"
-        );
-    }
+  if (!user) {
+    throw new ApiError(400, "Invalid or expired password reset token");
+  }
 
-    user.passwordHash =
-        await bcrypt.hash(
-            newPassword,
-            SALT_ROUNDS
-        );
+  user.passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
 
-    user.passwordResetTokenHash = null;
-    user.passwordResetExpires = null;
-    user.refreshTokenHash = null;
+  user.passwordResetTokenHash = null;
+  user.passwordResetExpires = null;
+  user.refreshTokenHash = null;
 
-    await saveUser(user);
+  await saveUser(user);
 }
 
-async function findUserWithPasswordResetToken(
-    tokenHash
-) {
-    const { User } =
-        await import("../users/user.model.js");
+async function findUserWithPasswordResetToken(tokenHash) {
+  const { User } = await import("../users/user.model.js");
 
-    return User.findOne({
-        passwordResetTokenHash:
-            tokenHash,
+  return User.findOne({
+    passwordResetTokenHash: tokenHash,
 
-        passwordResetExpires: {
-            $gt: new Date()
-        }
-    }).select("+passwordHash");
+    passwordResetExpires: {
+      $gt: new Date(),
+    },
+  }).select("+passwordHash");
 }
 
-export async function changePassword(
-    userId,
-    currentPassword,
-    newPassword
-) {
-    const user =
-        await findByIdWithSensitiveFields(
-            userId
-        );
+export async function changePassword(userId, currentPassword, newPassword) {
+  const user = await findByIdWithSensitiveFields(userId);
 
-    if (!user) {
-        throw new ApiError(
-            404,
-            "User not found"
-        );
-    }
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
 
-    const valid =
-        await bcrypt.compare(
-            currentPassword,
-            user.passwordHash
-        );
+  const valid = await bcrypt.compare(currentPassword, user.passwordHash);
 
-    if (!valid) {
-        throw new ApiError(
-            400,
-            "Current password is incorrect"
-        );
-    }
+  if (!valid) {
+    throw new ApiError(400, "Current password is incorrect");
+  }
 
-    user.passwordHash =
-        await bcrypt.hash(
-            newPassword,
-            SALT_ROUNDS
-        );
+  user.passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
 
-    user.refreshTokenHash = null;
+  user.refreshTokenHash = null;
 
-    await saveUser(user);
+  await saveUser(user);
 }
 
 export async function getCurrentUser(userId) {
-    const user =
-        await findById(userId);
+  const user = await findById(userId);
+  if (!user) throw new ApiError(404, "User not found");
+  return sanitizeUser(user);
+}
 
-    if (!user) {
-        throw new ApiError(
-            404,
-            "User not found"
-        );
-    }
+export async function updateProfile(userId, { name, phone }) {
+  const update = {};
+  if (name !== undefined) update.name = name;
+  if (phone !== undefined) update.phone = phone;
+  const user = await updateById(userId, update);
+  if (!user) throw new ApiError(404, "User not found");
+  return sanitizeUser(user);
+}
 
-    return sanitizeUser(user);
+/* ── Address helpers ── */
+export async function getAddresses(userId) {
+  const user = await findById(userId);
+  if (!user) throw new ApiError(404, "User not found");
+  return user.addresses || [];
+}
+
+export async function addAddress(userId, addressData) {
+  const user = await findById(userId);
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (user.addresses.length >= 2) {
+    throw new ApiError(400, "You can save maximum 2 addresses");
+  }
+
+  if (addressData.isDefault || user.addresses.length === 0) {
+    user.addresses.forEach((address) => {
+      address.isDefault = false;
+    });
+
+    addressData.isDefault = true;
+  }
+
+  user.addresses.push(addressData);
+
+  await saveUser(user);
+
+  return user.addresses[user.addresses.length - 1];
+}
+
+export async function updateAddress(userId, addressId, addressData) {
+  const user = await findById(userId);
+  if (!user) throw new ApiError(404, "User not found");
+
+  const addr = user.addresses.id(addressId);
+  if (!addr) throw new ApiError(404, "Address not found");
+
+  if (addressData.isDefault) {
+    user.addresses.forEach((a) => {
+      a.isDefault = false;
+    });
+  }
+  Object.assign(addr, addressData);
+  await saveUser(user);
+  return addr;
+}
+
+export async function deleteAddress(userId, addressId) {
+  const user = await findById(userId);
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  const address = user.addresses.id(addressId);
+
+  if (!address) {
+    throw new ApiError(404, "Address not found");
+  }
+
+  const wasDefault = address.isDefault;
+
+  user.addresses.pull(addressId);
+
+  if (wasDefault && user.addresses.length > 0) {
+    user.addresses[0].isDefault = true;
+  }
+
+  await saveUser(user);
+
+  return user.addresses;
+}
+
+export async function setDefaultAddress(userId, addressId) {
+  const user = await findById(userId);
+  if (!user) throw new ApiError(404, "User not found");
+
+  user.addresses.forEach((a) => {
+    a.isDefault = a._id.toString() === addressId;
+  });
+  await saveUser(user);
+  return user.addresses;
+}
+
+/* ─────────────────────────────────────────
+   Pet helpers
+───────────────────────────────────────── */
+
+export async function getPets(userId) {
+  const user = await findById(userId);
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  return user.pets || [];
+}
+
+export async function addPet(userId, petData) {
+  const user = await findById(userId);
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (user.pets.length >= 2) {
+    throw new ApiError(400, "You can add maximum 2 pets");
+  }
+
+  user.pets.push(petData);
+
+  await saveUser(user);
+
+  return user.pets[user.pets.length - 1];
+}
+
+export async function updatePet(userId, petId, petData) {
+  const user = await findById(userId);
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  const pet = user.pets.id(petId);
+
+  if (!pet) {
+    throw new ApiError(404, "Pet not found");
+  }
+
+  Object.assign(pet, petData);
+
+  await saveUser(user);
+
+  return pet;
+}
+
+export async function deletePet(userId, petId) {
+  const user = await findById(userId);
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  const pet = user.pets.id(petId);
+
+  if (!pet) {
+    throw new ApiError(404, "Pet not found");
+  }
+
+  user.pets.pull(petId);
+
+  await saveUser(user);
+
+  return user.pets;
 }
 
 function sanitizeUser(user) {
-    return {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        isEmailVerified:
-            user.isEmailVerified,
-        isActive: user.isActive,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt
-    };
+  return {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone || null,
+    role: user.role,
+
+    addresses: user.addresses || [],
+    pets: user.pets || [],
+
+    isEmailVerified: user.isEmailVerified,
+    isActive: user.isActive,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  };
 }

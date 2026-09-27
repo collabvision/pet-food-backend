@@ -10,7 +10,21 @@ import {
     forgotPasswordController,
     resetPasswordController,
     changePasswordController,
-    meController
+    meController,
+updateProfileController,
+    // Address
+    getAddressesController,
+    addAddressController,
+    updateAddressController,
+    deleteAddressController,
+    setDefaultAddressController,
+
+    // Pets
+    getPetsController,
+    addPetController,
+    updatePetController,
+    deletePetController
+
 } from "./auth.controller.js";
 
 import {
@@ -95,6 +109,75 @@ router.get(
     "/me",
     authenticate,
     asyncHandler(meController)
+);
+
+router.patch(
+    "/profile",
+    authenticate,
+    asyncHandler(updateProfileController)
+);
+
+// ─────────────────────────────────────────────
+// ADDRESSES
+// ─────────────────────────────────────────────
+
+router.get(
+    "/addresses",
+    authenticate,
+    asyncHandler(getAddressesController)
+);
+
+router.post(
+    "/addresses",
+    authenticate,
+    asyncHandler(addAddressController)
+);
+
+router.patch(
+    "/addresses/:addressId",
+    authenticate,
+    asyncHandler(updateAddressController)
+);
+
+router.delete(
+    "/addresses/:addressId",
+    authenticate,
+    asyncHandler(deleteAddressController)
+);
+
+router.patch(
+    "/addresses/:addressId/default",
+    authenticate,
+    asyncHandler(setDefaultAddressController)
+);
+
+
+// ─────────────────────────────────────────────
+// PETS
+// ─────────────────────────────────────────────
+
+router.get(
+    "/pets",
+    authenticate,
+    asyncHandler(getPetsController)
+);
+
+router.post(
+    "/pets",
+    authenticate,
+    asyncHandler(addPetController)
+);
+
+router.patch(
+    "/pets/:petId",
+    authenticate,
+    asyncHandler(updatePetController)
+);
+
+router.delete(
+    "/pets/:petId",
+    authenticate,
+    asyncHandler(deletePetController)
 );
 
 export default router;

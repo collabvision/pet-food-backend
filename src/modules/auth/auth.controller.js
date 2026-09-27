@@ -8,7 +8,20 @@ import {
     forgotPassword,
     resetPassword,
     changePassword,
-    getCurrentUser
+    getCurrentUser,
+updateProfile,
+    // Address
+    getAddresses,
+    addAddress,
+    updateAddress,
+    deleteAddress,
+    setDefaultAddress,
+
+    // Pets
+    getPets,
+    addPet,
+    updatePet,
+    deletePet
 } from "./auth.service.js";
 
 import { ApiError } from "../../utils/ApiError.js";
@@ -184,5 +197,139 @@ export async function meController(req, res) {
     res.status(200).json({
         success: true,
         data: user
+    });
+}
+
+
+export async function updateProfileController(req, res) {
+    const user = await updateProfile(
+        req.user.id,
+        {
+            name: req.body.name,
+            phone: req.body.phone
+        }
+    );
+
+    res.status(200).json({
+        success: true,
+        message: "Profile updated successfully",
+        data: user
+    });
+}
+// ─────────────────────────────────────────────
+// ADDRESSES
+// ─────────────────────────────────────────────
+
+export async function getAddressesController(req, res) {
+    const addresses = await getAddresses(req.user.id);
+
+    res.status(200).json({
+        success: true,
+        data: addresses
+    });
+}
+
+export async function addAddressController(req, res) {
+    const address = await addAddress(
+        req.user.id,
+        req.body
+    );
+
+    res.status(201).json({
+        success: true,
+        message: "Address added successfully",
+        data: address
+    });
+}
+
+export async function updateAddressController(req, res) {
+    const address = await updateAddress(
+        req.user.id,
+        req.params.addressId,
+        req.body
+    );
+
+    res.status(200).json({
+        success: true,
+        message: "Address updated successfully",
+        data: address
+    });
+}
+
+export async function deleteAddressController(req, res) {
+    await deleteAddress(
+        req.user.id,
+        req.params.addressId
+    );
+
+    res.status(200).json({
+        success: true,
+        message: "Address deleted successfully"
+    });
+}
+
+export async function setDefaultAddressController(req, res) {
+    const address = await setDefaultAddress(
+        req.user.id,
+        req.params.addressId
+    );
+
+    res.status(200).json({
+        success: true,
+        message: "Default address updated successfully",
+        data: address
+    });
+}
+
+
+// ─────────────────────────────────────────────
+// PETS
+// ─────────────────────────────────────────────
+
+export async function getPetsController(req, res) {
+    const pets = await getPets(req.user.id);
+
+    res.status(200).json({
+        success: true,
+        data: pets
+    });
+}
+
+export async function addPetController(req, res) {
+    const pet = await addPet(
+        req.user.id,
+        req.body
+    );
+
+    res.status(201).json({
+        success: true,
+        message: "Pet added successfully",
+        data: pet
+    });
+}
+
+export async function updatePetController(req, res) {
+    const pet = await updatePet(
+        req.user.id,
+        req.params.petId,
+        req.body
+    );
+
+    res.status(200).json({
+        success: true,
+        message: "Pet updated successfully",
+        data: pet
+    });
+}
+
+export async function deletePetController(req, res) {
+    await deletePet(
+        req.user.id,
+        req.params.petId
+    );
+
+    res.status(200).json({
+        success: true,
+        message: "Pet deleted successfully"
     });
 }
