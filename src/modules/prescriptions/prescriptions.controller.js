@@ -1,96 +1,144 @@
+
+import sharp from "sharp";
+
 import {
-  uploadPrescription,
-  getMyPrescriptions,
-  getPrescriptionById,
-  getAllPrescriptions,
-  reviewPrescription,
+    uploadPrescription,
+    getMyPrescriptions,
+    getPrescriptionById,
+    getAllPrescriptions,
+    reviewPrescription,
 } from "./prescriptions.service.js";
 
 import {
-  storageProvider,
-  imageProcessor,
+    imageProcessor,
 } from "../../providers/storage/index.js";
 
+import path from "path";
+import fs from "fs/promises";
+
 export async function uploadPrescriptionController(req, res) {
-  let fileUrl = null;
-  if (req.file) {
-    if (req.file.mimetype.startsWith("image/")) {
-      const processed = await imageProcessor.processImage(req.file.buffer);
-      const metadata = await sharp(processed).metadata();
-
-      if (metadata.format !== "webp") {
+    if (!req.file) {
         return res.status(400).json({
-          success: false,
-          message: "Prescription must be a WebP image",
+            success: false,
+            message: "Prescription image is required",
         });
-      }
-      const webpFilename = req.file.originalname.replace(/\.[^.]+$/, ".webp");
-
-      const uploaded = await storageProvider.uploadImage(
-        processed,
-        webpFilename,
-      );
-      fileUrl = uploaded.url;
-    } else {
-      // pdf handling or direct upload
-      const uploaded = await storageProvider.uploadImage(
-        req.file.buffer,
-        req.file.originalname,
-      );
-      fileUrl = uploaded.url;
     }
-  }
 
-  const prescription = await uploadPrescription(req.user.id, req.body, fileUrl);
+    if (!req.file.mimetype.startsWith("image/")) {
+        return res.status(400).json({
+            success: false,
+            message: "Only image files are allowed",
+        });
+    }
 
-  res.status(201).json({
-    success: true,
-    message: "Prescription uploaded successfully",
-    data: prescription,
-  });
+    // Convert and compress the uploaded image to WebP.
+    const processedBuffer = await imageProcessor.processImage(
+        req.file.buffer
+    );
+
+    // Verify the resulting image format.
+    const metadata = await sharp(processedBuffer).metadata();
+
+    if (metadata.format !== "webp") {
+        return res.status(400).json({
+            success: false,
+            message: "Image processing did not produce WebP",
+        });
+    }
+
+    // Pass the processed file to the service.
+    const processedFile = {
+        buffer: processedBuffer,
+        mimetype: "image/webp",
+        originalname: req.file.originalname,
+        size: processedBuffer.length,
+    };
+
+    const prescription = await uploadPrescription(
+        req.user.id,
+        req.body,
+        processedFile
+    );
+
+    return res.status(201).json({
+        success: true,
+        message: "Prescription uploaded successfully",
+        data: prescription,
+    });
 }
 
 export async function getMyPrescriptionsController(req, res) {
-  const prescriptions = await getMyPrescriptions(req.user.id);
+    const prescriptions = await getMyPrescriptions(req.user.id);
 
-  res.status(200).json({
-    success: true,
-    data: prescriptions,
-  });
+    return res.status(200).json({
+        success: true,
+        data: prescriptions,
+    });
 }
 
 export async function getPrescriptionByIdController(req, res) {
-  const prescription = await getPrescriptionById(
-    req.params.prescriptionId,
-    req.user.id,
-    req.user.role,
-  );
+    const prescription = await getPrescriptionById(
+        req.params.prescriptionId,
+        req.user.id,
+        req.user.role
+    );
 
-  res.status(200).json({
-    success: true,
-    data: prescription,
-  });
+    return res.status(200).json({
+        success: true,
+        data: prescription,
+    });
 }
 
 export async function getAllPrescriptionsController(req, res) {
-  const prescriptions = await getAllPrescriptions();
+    const prescriptions = await getAllPrescriptions();
 
-  res.status(200).json({
-    success: true,
-    data: prescriptions,
-  });
+    return res.status(200).json({
+        success: true,
+        data: prescriptions,
+    });
 }
 
 export async function reviewPrescriptionController(req, res) {
-  const prescription = await reviewPrescription(
+    const prescription = await reviewPrescription(
+        req.params.prescriptionId,
+        req.user.id,
+        req.body
+    );
+
+    return res.status(200).json({
+        success: true,
+        message: "Prescription reviewed successfully",
+        data: prescription,
+    });
+}
+
+export async function getPrescriptionImageController(req, res) {
+  const prescription = await getPrescriptionById(
     req.params.prescriptionId,
     req.user.id,
-    req.body,
+    req.user.role
   );
 
-  res.status(200).json({
-    success: true,
-    message: "Prescription reviewed successfully",
-    data: prescription,
-  });
+  const uploadDirectory = path.resolve("uploads", "prescriptions");
+  const imagePath = path.resolve(prescription.storagePath);
+  const relativePath = path.relative(uploadDirectory, imagePath);
+
+  // Prevent paths outside the prescription upload directory
+  if (
+    relativePath.startsWith("..") ||
+    path.isAbsolute(relativePath)
+  ) {
+    return res.status(403).json({
+      success: false,
+      message: "Invalid prescription image path",
+    });
+  }
+
+  await fs.access(imagePath);
+
+  res.setHeader("Content-Type", "image/webp");
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+
+  return res.sendFile(imagePath);
 }

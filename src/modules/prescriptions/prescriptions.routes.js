@@ -6,7 +6,8 @@ import {
     getMyPrescriptionsController,
     getPrescriptionByIdController,
     getAllPrescriptionsController,
-    reviewPrescriptionController
+    reviewPrescriptionController,
+    getPrescriptionImageController
 } from "./prescriptions.controller.js";
 
 import {
@@ -50,21 +51,26 @@ router.get(
         getAllPrescriptionsController
     )
 );
+router.get(
+  "/:prescriptionId/image",
+  getPrescriptionImageController
+);
+
+router.get(
+  "/:prescriptionId",
+  getPrescriptionByIdController
+);
 
 router.patch(
     "/admin/:prescriptionId/review",
     authorize("ADMIN"),
     validate(reviewPrescriptionSchema),
-    asyncHandler(
-        reviewPrescriptionController
-    )
+    asyncHandler(reviewPrescriptionController)
 );
 
 router.get(
     "/:prescriptionId",
-    asyncHandler(
-        getPrescriptionByIdController
-    )
+    asyncHandler(getPrescriptionByIdController)
 );
 
 export default router;
