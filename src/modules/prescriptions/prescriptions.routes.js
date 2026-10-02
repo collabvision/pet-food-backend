@@ -20,6 +20,7 @@ import { authorize } from "../../middleware/role.middleware.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import { upload } from "../../middleware/upload.middleware.js";
 
+
 const router = Router();
 
 
@@ -28,7 +29,7 @@ router.use(authenticate);
 
 router.post(
     "/upload",
-    upload.single("prescription"),
+    upload.single("file"),
     validate(createPrescriptionSchema),
     asyncHandler(
         uploadPrescriptionController

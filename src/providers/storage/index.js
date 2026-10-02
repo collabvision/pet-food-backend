@@ -11,6 +11,6 @@ if (env.storageProvider === "cloudinary") {
     storageProvider = new LocalStorageProvider();
 }
 
-const imageProcessor = new ImageProcessor();
+const imageProcessor = ImageProcessor;
 
 export { storageProvider, imageProcessor };
