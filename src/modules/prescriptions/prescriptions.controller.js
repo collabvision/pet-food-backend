@@ -1,12 +1,13 @@
-
 import sharp from "sharp";
 
 import {
     uploadPrescription,
     getMyPrescriptions,
+    getMyCurrentPrescriptions,
     getPrescriptionById,
     getAllPrescriptions,
     reviewPrescription,
+    getCurrentPrescriptionForProduct,
 } from "./prescriptions.service.js";
 
 import {
@@ -62,7 +63,7 @@ export async function uploadPrescriptionController(req, res) {
 
     return res.status(201).json({
         success: true,
-        message: "Prescription uploaded successfully",
+        message: "Prescription uploaded successfully. It is under review.",
         data: prescription,
     });
 }
@@ -73,6 +74,36 @@ export async function getMyPrescriptionsController(req, res) {
     return res.status(200).json({
         success: true,
         data: prescriptions,
+    });
+}
+
+/**
+ * GET /prescriptions/current
+ * Returns ONLY isCurrent=true prescriptions — used by the cart page.
+ * Consumed/historical records are excluded so the UI shows accurate status.
+ */
+export async function getMyCurrentPrescriptionsController(req, res) {
+    const prescriptions = await getMyCurrentPrescriptions(req.user.id);
+
+    return res.status(200).json({
+        success: true,
+        data: prescriptions,
+    });
+}
+
+/**
+ * GET /prescriptions/product/:productId
+ * Returns the current (latest) prescription for the authenticated user + product.
+ */
+export async function getPrescriptionByProductController(req, res) {
+    const prescription = await getCurrentPrescriptionForProduct(
+        req.user.id,
+        req.params.productId
+    );
+
+    return res.status(200).json({
+        success: true,
+        data: prescription || null,
     });
 }
 
@@ -107,38 +138,38 @@ export async function reviewPrescriptionController(req, res) {
 
     return res.status(200).json({
         success: true,
-        message: "Prescription reviewed successfully",
+        message: `Prescription ${req.body.status === "APPROVED" ? "approved" : "rejected"} successfully`,
         data: prescription,
     });
 }
 
 export async function getPrescriptionImageController(req, res) {
-  const prescription = await getPrescriptionById(
-    req.params.prescriptionId,
-    req.user.id,
-    req.user.role
-  );
+    const prescription = await getPrescriptionById(
+        req.params.prescriptionId,
+        req.user.id,
+        req.user.role
+    );
 
-  const uploadDirectory = path.resolve("uploads", "prescriptions");
-  const imagePath = path.resolve(prescription.storagePath);
-  const relativePath = path.relative(uploadDirectory, imagePath);
+    const uploadDirectory = path.resolve("uploads", "prescriptions");
+    const imagePath = path.resolve(prescription.storagePath);
+    const relativePath = path.relative(uploadDirectory, imagePath);
 
-  // Prevent paths outside the prescription upload directory
-  if (
-    relativePath.startsWith("..") ||
-    path.isAbsolute(relativePath)
-  ) {
-    return res.status(403).json({
-      success: false,
-      message: "Invalid prescription image path",
-    });
-  }
+    // Prevent paths outside the prescription upload directory
+    if (
+        relativePath.startsWith("..") ||
+        path.isAbsolute(relativePath)
+    ) {
+        return res.status(403).json({
+            success: false,
+            message: "Invalid prescription image path",
+        });
+    }
 
-  await fs.access(imagePath);
+    await fs.access(imagePath);
 
-  res.setHeader("Content-Type", "image/webp");
-  res.setHeader("Cache-Control", "private, no-store");
-  res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Type", "image/webp");
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
 
-  return res.sendFile(imagePath);
+    return res.sendFile(imagePath);
 }

@@ -28,6 +28,17 @@ const orderItemSchema = new mongoose.Schema(
             type: Number,
             required: true,
             min: 0
+        },
+        /**
+         * Reference to the Prescription document that authorised this item.
+         * Null for non-prescription products.  Stored for audit purposes so
+         * we always know which exact prescription version was verified at the
+         * time of order placement.
+         */
+        prescriptionId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Prescription",
+            default: null
         }
     },
     {
@@ -160,6 +171,12 @@ const orderSchema = new mongoose.Schema(
             type: Number,
             required: true,
             min: 0
+        },
+
+        paymentMethod: {
+            type: String,
+            enum: ["ONLINE", "COD"],
+            required: true
         },
 
         paymentStatus: {

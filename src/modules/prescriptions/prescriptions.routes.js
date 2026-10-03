@@ -1,13 +1,14 @@
 import { Router } from "express";
 
-
 import {
     uploadPrescriptionController,
     getMyPrescriptionsController,
+    getMyCurrentPrescriptionsController,
     getPrescriptionByIdController,
     getAllPrescriptionsController,
     reviewPrescriptionController,
-    getPrescriptionImageController
+    getPrescriptionImageController,
+    getPrescriptionByProductController,
 } from "./prescriptions.controller.js";
 
 import {
@@ -24,41 +25,41 @@ import { upload } from "../../middleware/upload.middleware.js";
 
 const router = Router();
 
-
-
 router.use(authenticate);
 
 router.post(
     "/upload",
     upload.single("file"),
     validate(createPrescriptionSchema),
-    asyncHandler(
-        uploadPrescriptionController
-    )
+    asyncHandler(uploadPrescriptionController)
 );
 
 router.get(
     "/",
-    asyncHandler(
-        getMyPrescriptionsController
-    )
+    asyncHandler(getMyPrescriptionsController)
+);
+
+// Returns ONLY active (isCurrent=true) prescriptions — used by the cart UI
+router.get(
+    "/current",
+    asyncHandler(getMyCurrentPrescriptionsController)
+);
+
+// Get the current prescription for a specific product (by the authenticated user)
+router.get(
+    "/product/:productId",
+    asyncHandler(getPrescriptionByProductController)
 );
 
 router.get(
     "/admin/all",
     authorize("ADMIN"),
-    asyncHandler(
-        getAllPrescriptionsController
-    )
-);
-router.get(
-  "/:prescriptionId/image",
-  getPrescriptionImageController
+    asyncHandler(getAllPrescriptionsController)
 );
 
 router.get(
-  "/:prescriptionId",
-  getPrescriptionByIdController
+    "/:prescriptionId/image",
+    asyncHandler(getPrescriptionImageController)
 );
 
 router.patch(

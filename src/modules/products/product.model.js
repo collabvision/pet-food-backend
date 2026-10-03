@@ -121,8 +121,10 @@ productSchema.pre("validate", function (next) {
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, "-")
             .replace(/(^-|-$)+/g, "");
-        // Append a short random string to ensure uniqueness
-        this.slug = baseSlug + "-" + Math.random().toString(36).substring(2, 6);
+
+        // Generate a unique slug
+        this.slug =
+            baseSlug + "-" + Math.random().toString(36).substring(2, 6);
     }
     next();
 });

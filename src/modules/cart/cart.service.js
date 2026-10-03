@@ -8,6 +8,7 @@ import {
 } from "./cart.repository.js";
 
 import { Product } from "../products/product.model.js";
+import { Prescription } from "../prescriptions/prescription.model.js";
 
 async function getProduct(productId) {
     const product = await Product.findById(productId);
@@ -151,6 +152,13 @@ export async function removeCartItem(userId, productId) {
 
     await saveCart(cart);
 
+    // If there is an active prescription for this user and product, 
+    // deactivate it since the product is removed from the cart.
+    await Prescription.updateMany(
+        { userId, productId, isCurrent: true },
+        { $set: { isCurrent: false } }
+    );
+
     await cart.populate({
         path: "items.productId"
     });
@@ -164,6 +172,12 @@ export async function clearCart(userId) {
     cart.items = [];
 
     await saveCart(cart);
+
+    // Also clear all active prescriptions since the entire cart was cleared
+    await Prescription.updateMany(
+        { userId, isCurrent: true, orderId: null },
+        { $set: { isCurrent: false } }
+    );
 
     return formatCart(cart);
 }

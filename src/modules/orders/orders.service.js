@@ -16,6 +16,7 @@ import {
 
 import { Cart } from "../cart/cart.model.js";
 import { Product } from "../products/product.model.js";
+import {Prescription} from "../prescriptions/prescription.model.js";
 
 function generateOrderNumber() {
   const timestamp = Date.now().toString(36).toUpperCase();
@@ -38,12 +39,18 @@ function calculateTotals(items, shippingCharge, discount) {
   };
 }
 
-export async function createUserOrder(
+export const createUserOrder = async (
   userId,
   shippingAddress,
+  paymentMethod,
   shippingCharge = 0,
   discount = 0,
-) {
+  checkoutMode = "ALL",
+) => {
+  if (!["ALL", "NON_PRESCRIPTION"].includes(checkoutMode)) {
+    throw new ApiError(400, "Invalid checkout mode");
+  }
+
   const cart = await Cart.findOne({ userId });
 
   if (!cart || cart.items.length === 0) {
@@ -62,25 +69,75 @@ export async function createUserOrder(
   );
 
   const orderItems = [];
+  const orderedProductIds = new Set();
 
   for (const cartItem of cart.items) {
     const product = productMap.get(cartItem.productId.toString());
 
-    if (!product) {
-      throw new ApiError(400, `Product ${cartItem.productId} is unavailable`);
-    }
-    if (product.requiresPrescription ) {
+    if (!product || !product.isActive) {
       throw new ApiError(
         400,
-        `Cannot place order: ${product.name} requires a valid prescription.`,
+        `Product ${cartItem.productId} is unavailable`,
       );
     }
-    if (product.stock !== undefined && product.stock < cartItem.quantity) {
-      throw new ApiError(400, `Insufficient stock for ${product.name}`);
+
+    // Skip prescription products during non-prescription checkout.
+    if (
+      checkoutMode === "NON_PRESCRIPTION" &&
+      product.requiresPrescription
+    ) {
+      continue;
     }
 
-    const price = Number(product.price);
+    let approvedPrescription = null;
+
+    // Verify approval for prescription-required products.
+    // IMPORTANT: we must check isCurrent=true so a superseded APPROVED
+    // prescription (from before the user uploaded a replacement) cannot
+    // authorize checkout.
+    if (product.requiresPrescription) {
+      approvedPrescription = await Prescription.findOne({
+        userId,
+        productId: product._id,
+        status: "APPROVED",
+        isCurrent: true,
+      });
+
+      if (!approvedPrescription) {
+        throw new ApiError(
+          400,
+          `An approved prescription is required for ${product.name}. ` +
+          `If you have recently re-uploaded a prescription, an admin must approve the new version before you can order.`,
+        );
+      }
+    }
+
     const quantity = Number(cartItem.quantity);
+    const price = Number(product.price);
+
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      throw new ApiError(
+        400,
+        `Invalid quantity for ${product.name}`,
+      );
+    }
+
+    if (!Number.isFinite(price) || price < 0) {
+      throw new ApiError(
+        400,
+        `Invalid price for ${product.name}`,
+      );
+    }
+
+    if (
+      product.stock !== undefined &&
+      product.stock < quantity
+    ) {
+      throw new ApiError(
+        400,
+        `Insufficient stock for ${product.name}`,
+      );
+    }
 
     orderItems.push({
       productId: product._id,
@@ -88,10 +145,27 @@ export async function createUserOrder(
       price,
       quantity,
       total: price * quantity,
+      // Record the exact prescription version that authorised this item.
+      // null for non-prescription products.
+      prescriptionId: approvedPrescription?._id || null,
     });
+
+    orderedProductIds.add(product._id.toString());
   }
 
-  const totals = calculateTotals(orderItems, shippingCharge, discount);
+  // This check must be outside the loop.
+  if (orderItems.length === 0) {
+    throw new ApiError(
+      400,
+      "No eligible products found for checkout",
+    );
+  }
+
+  const totals = calculateTotals(
+    orderItems,
+    shippingCharge,
+    discount,
+  );
 
   const order = await createOrder({
     orderNumber: generateOrderNumber(),
@@ -99,6 +173,7 @@ export async function createUserOrder(
     items: orderItems,
     shippingAddress,
     ...totals,
+    paymentMethod,
     paymentStatus: "PENDING",
     orderStatus: "PENDING",
     statusHistory: [
@@ -110,11 +185,32 @@ export async function createUserOrder(
     ],
   });
 
-  cart.items = [];
-  await cart.save();
+  // If the payment is COD, we can immediately remove the items from the cart
+  // and consume the prescriptions. For ONLINE payment, we preserve them
+  // until the payment is successfully verified.
+  if (paymentMethod === "COD") {
+    // Remove only products included in this order.
+    // Skipped prescription products remain in the cart.
+    cart.items = cart.items.filter(
+      (item) => !orderedProductIds.has(item.productId.toString()),
+    );
+    await cart.save();
+
+    // Consume the approved prescriptions
+    const prescriptionIds = orderItems
+      .filter((i) => i.prescriptionId)
+      .map((i) => i.prescriptionId);
+    
+    if (prescriptionIds.length > 0) {
+      await Prescription.updateMany(
+        { _id: { $in: prescriptionIds } },
+        { $set: { isCurrent: false, orderId: order._id } }
+      );
+    }
+  }
 
   return order;
-}
+};
 
 export async function getUserOrder(userId, orderId) {
   const order = await findById(orderId);

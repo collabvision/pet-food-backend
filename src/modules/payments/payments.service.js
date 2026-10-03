@@ -18,6 +18,9 @@ import {
     saveOrder
 } from "../orders/orders.repository.js";
 
+import { Cart } from "../cart/cart.model.js";
+import { Prescription } from "../prescriptions/prescription.model.js";
+
 export async function createPaymentOrder(
     userId,
     orderId
@@ -171,6 +174,27 @@ export async function verifyPayment(
     order.paymentStatus = "AUTHORIZED";
 
     await saveOrder(order);
+
+    // Now that payment is verified, we can safely remove the ordered items
+    // from the user's cart and consume the prescriptions.
+    const orderedProductIds = new Set(order.items.map(item => item.productId.toString()));
+    
+    const cart = await Cart.findOne({ userId });
+    if (cart) {
+        cart.items = cart.items.filter(item => !orderedProductIds.has(item.productId.toString()));
+        await cart.save();
+    }
+
+    const prescriptionIds = order.items
+        .filter(i => i.prescriptionId)
+        .map(i => i.prescriptionId);
+        
+    if (prescriptionIds.length > 0) {
+        await Prescription.updateMany(
+            { _id: { $in: prescriptionIds } },
+            { $set: { isCurrent: false, orderId: order._id } }
+        );
+    }
 
     return {
         verified: true,
