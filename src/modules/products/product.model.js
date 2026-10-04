@@ -108,6 +108,19 @@ const productSchema = new mongoose.Schema(
             type: Boolean,
             default: true,
             index: true
+        },
+
+        rating: {
+            type: Number,
+            default: null,
+            min: 0,
+            max: 5
+        },
+
+        reviewCount: {
+            type: Number,
+            default: 0,
+            min: 0
         }
     },
     {
