@@ -7,10 +7,12 @@ import {
     verifyPaymentController,
     getPaymentController,
     getOrderPaymentController,
-    getUserPaymentsController
+    getUserPaymentsController,
+    getAdminPaymentsController
 } from "./payments.controller.js";
 
 import { authenticate } from "../../middleware/auth.middleware.js";
+import { authorize } from "../../middleware/role.middleware.js";
 import { validate } from "../../middleware/validate.middleware.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 
@@ -48,6 +50,12 @@ router.get(
 router.get(
     "/:paymentId",
     asyncHandler(getPaymentController)
+);
+
+router.get(
+    "/admin/all",
+    authorize("ADMIN"),
+    asyncHandler(getAdminPaymentsController)
 );
 
 export default router;

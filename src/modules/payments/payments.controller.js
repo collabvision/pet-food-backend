@@ -5,7 +5,8 @@ import {
     verifyPayment,
     getPayment,
     getOrderPayment,
-    getUserPayments
+    getUserPayments,
+    getAdminPayments
 } from "./payments.service.js";
 
 export async function createPaymentOrderController(
@@ -79,6 +80,23 @@ export async function getUserPaymentsController(
     const payments = await getUserPayments(
         req.user.id
     );
+
+    res.status(200).json({
+        success: true,
+        data: payments
+    });
+}
+
+export async function getAdminPaymentsController(
+    req,
+    res
+) {
+    const { page = 1, limit = 20, search = "" } = req.query;
+    const payments = await getAdminPayments({
+        page: Number(page),
+        limit: Number(limit),
+        search
+    });
 
     res.status(200).json({
         success: true,

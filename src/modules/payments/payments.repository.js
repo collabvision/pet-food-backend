@@ -32,3 +32,25 @@ export async function updatePayment(paymentId, data) {
 export async function findUserPayments(userId) {
   return Payment.find({ userId }).sort({ createdAt: -1 }).populate("orderId");
 }
+
+export async function findAllPayments({ page = 1, limit = 20, search = "" } = {}) {
+    const query = {};
+    if (search) {
+        query.$or = [
+            { razorpayOrderId: { $regex: search, $options: "i" } },
+            { razorpayPaymentId: { $regex: search, $options: "i" } }
+        ];
+    }
+    const skip = (page - 1) * limit;
+    const [payments, total] = await Promise.all([
+        Payment.find(query)
+            .populate("orderId", "orderNumber totalAmount")
+            .populate("userId", "name email")
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean(),
+        Payment.countDocuments(query),
+    ]);
+    return { payments, total, page, limit };
+}

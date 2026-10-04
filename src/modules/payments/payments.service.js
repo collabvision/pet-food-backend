@@ -8,7 +8,8 @@ import {
     findByOrderId,
     findByRazorpayOrderId,
     updatePayment,
-    findUserPayments
+    findUserPayments,
+    findAllPayments
 } from "./payments.repository.js";
 
 import { paymentProvider } from "../../providers/payment/index.js";
@@ -253,4 +254,8 @@ export async function getOrderPayment(
 
 export async function getUserPayments(userId) {
     return findUserPayments(userId);
+}
+
+export async function getAdminPayments({ page, limit, search } = {}) {
+    return findAllPayments({ page, limit, search });
 }
