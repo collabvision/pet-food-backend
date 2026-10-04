@@ -20,6 +20,7 @@ import returnsRoutes from "./modules/returns/returns.routes.js";
 import prescriptionsRoutes from "./modules/prescriptions/prescriptions.routes.js";
 import notificationsRoutes from "./modules/notifications/notifications.routes.js";
 import usersRoutes from "./modules/users/users.routes.js";
+import systemRoutes from "./modules/system/system.routes.js";
 
 const app = express();
 
@@ -127,6 +128,7 @@ app.use("/api/v1/returns", returnsRoutes);
 app.use("/api/v1/prescriptions", prescriptionsRoutes);
 app.use("/api/v1/notifications", notificationsRoutes);
 app.use("/api/v1/users", usersRoutes);
+app.use("/api/v1/system", systemRoutes);
 
 app.use(errorMiddleware);
 
