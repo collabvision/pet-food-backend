@@ -38,6 +38,12 @@ router.get(
 );
 
 router.get(
+    "/admin/all",
+    authorize("ADMIN"),
+    asyncHandler(getAdminOrdersController)
+);
+
+router.get(
     "/number/:orderNumber",
     asyncHandler(getOrderByNumberController)
 );
@@ -50,12 +56,6 @@ router.get(
 router.patch(
     "/:orderId/cancel",
     asyncHandler(cancelOrderController)
-);
-
-router.get(
-    "/admin/all",
-    authorize("ADMIN"),
-    asyncHandler(getAdminOrdersController)
 );
 
 router.patch(

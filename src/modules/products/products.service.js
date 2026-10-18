@@ -14,46 +14,18 @@ import { findCategoryById } from "../categories/categories.repository.js";
 
 
 export async function createProductService(data) {
-    const existingSlug =
-        await findProductBySlug(data.slug);
-
-    if (existingSlug) {
-        throw new ApiError(
-            409,
-            "Product slug already exists"
-        );
-    }
-
-    const existingSku =
-        await findProductBySku(data.sku);
-
-    if (existingSku) {
-        throw new ApiError(
-            409,
-            "Product SKU already exists"
-        );
-    }
-
-    const category =
-        await findCategoryById(data.category);
+    const category = await findCategoryById(data.category);
 
     if (!category) {
-        throw new ApiError(
-            404,
-            "Category not found"
-        );
+        throw new ApiError(404, "Category not found");
     }
 
     if (!category.isActive) {
-        throw new ApiError(
-            400,
-            "Category is inactive"
-        );
+        throw new ApiError(400, "Category is inactive");
     }
 
     if (
-        data.compareAtPrice !== undefined &&
-        data.compareAtPrice !== null &&
+        data.compareAtPrice != null &&
         data.compareAtPrice < data.price
     ) {
         throw new ApiError(
@@ -62,17 +34,31 @@ export async function createProductService(data) {
         );
     }
 
-    if (
-        data.requiresPrescription === true &&
-        data.isMedical !== true
-    ) {
+    if (data.requiresPrescription && !data.isMedical) {
         throw new ApiError(
             400,
             "Prescription requirement is only allowed for medical products"
         );
     }
 
-    return createProduct(data);
+    // Check whether inventory already exists for a product.
+    // Normally this will not exist for a new product.
+    const product = await createProduct(data);
+
+    try {
+        await createInventory({
+            product: product._id,
+            quantity: 0,
+            reservedQuantity: 0,
+            lowStockThreshold: 10
+        });
+    } catch (error) {
+        // Roll back product creation if inventory creation fails.
+        await deleteProductById(product._id);
+        throw error;
+    }
+
+    return product;
 }
 
 
@@ -280,15 +266,15 @@ export async function updateProductService(
 
 
 export async function deleteProductService(productId) {
-    const product =
-        await findProductById(productId);
+    const product = await findProductById(productId);
 
     if (!product) {
-        throw new ApiError(
-            404,
-            "Product not found"
-        );
+        throw new ApiError(404, "Product not found");
     }
 
-    return deleteProductById(productId);
+    // Keep product and inventory records aligned.
+    // Retain records for historical orders and auditing.
+    return updateProductById(productId, {
+        isActive: false
+    });
 }

@@ -18,6 +18,11 @@ import { Cart } from "../cart/cart.model.js";
 import { Product } from "../products/product.model.js";
 import {Prescription} from "../prescriptions/prescription.model.js";
 
+import {
+  reserveInventory,
+  releaseReservedInventory,
+} from "../inventory/inventory.repository.js";
+
 function generateOrderNumber() {
   const timestamp = Date.now().toString(36).toUpperCase();
 
@@ -129,15 +134,7 @@ export const createUserOrder = async (
       );
     }
 
-    if (
-      product.stock !== undefined &&
-      product.stock < quantity
-    ) {
-      throw new ApiError(
-        400,
-        `Insufficient stock for ${product.name}`,
-      );
-    }
+   
 
     orderItems.push({
       productId: product._id,
