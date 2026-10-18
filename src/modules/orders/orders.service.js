@@ -16,33 +16,82 @@ import {
 
 import { Cart } from "../cart/cart.model.js";
 import { Product } from "../products/product.model.js";
-import {Prescription} from "../prescriptions/prescription.model.js";
+import { Prescription } from "../prescriptions/prescription.model.js";
 
 import {
   reserveInventory,
   releaseReservedInventory,
+  decrementInventory,
 } from "../inventory/inventory.repository.js";
 
 function generateOrderNumber() {
   const timestamp = Date.now().toString(36).toUpperCase();
-
   const random = crypto.randomBytes(4).toString("hex").toUpperCase();
-
   return `ORD-${timestamp}-${random}`;
 }
 
 function calculateTotals(items, shippingCharge, discount) {
   const subtotal = items.reduce((sum, item) => sum + item.total, 0);
-
   const totalAmount = Math.max(0, subtotal + shippingCharge - discount);
-
-  return {
-    subtotal,
-    shippingCharge,
-    discount,
-    totalAmount,
-  };
+  return { subtotal, shippingCharge, discount, totalAmount };
 }
+
+/**
+ * Reserve inventory for every item in the order.
+ * Rolls back successful reservations if one fails.
+ */
+async function reserveOrderInventory(orderItems) {
+  const reserved = [];
+
+  for (const item of orderItems) {
+    const result = await reserveInventory(item.productId, item.quantity);
+
+    if (!result) {
+      // Rollback already-reserved items before throwing
+      for (const r of reserved) {
+        await releaseReservedInventory(r.productId, r.quantity).catch(() => {});
+      }
+      throw new ApiError(
+        400,
+        `Insufficient stock for "${item.name}". Please reduce quantity or remove the item.`
+      );
+    }
+
+    reserved.push({ productId: item.productId, quantity: item.quantity });
+  }
+}
+
+/**
+ * Release reserved inventory for every item in the order (cancellations/returns).
+ * Errors are swallowed individually so one failure doesn't block others.
+ */
+async function releaseOrderInventory(orderItems) {
+  await Promise.allSettled(
+    orderItems.map((item) =>
+      releaseReservedInventory(item.productId, item.quantity)
+    )
+  );
+}
+
+/**
+ * Commit reserved inventory on delivery:
+ *   - decrement actual quantity (consume)
+ *   - release the reservation counter
+ */
+async function commitOrderInventory(orderItems) {
+  await Promise.allSettled(
+    orderItems.map(async (item) => {
+      // Decrement quantity; the atomic query ensures quantity >= reservedQuantity + item.quantity
+      await decrementInventory(item.productId, item.quantity).catch(() => {});
+      // Release the reservation that was held since order creation
+      await releaseReservedInventory(item.productId, item.quantity).catch(() => {});
+    })
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// ORDER CREATION
+// ─────────────────────────────────────────────────────────
 
 export const createUserOrder = async (
   userId,
@@ -80,17 +129,11 @@ export const createUserOrder = async (
     const product = productMap.get(cartItem.productId.toString());
 
     if (!product || !product.isActive) {
-      throw new ApiError(
-        400,
-        `Product ${cartItem.productId} is unavailable`,
-      );
+      throw new ApiError(400, `Product ${cartItem.productId} is unavailable`);
     }
 
     // Skip prescription products during non-prescription checkout.
-    if (
-      checkoutMode === "NON_PRESCRIPTION" &&
-      product.requiresPrescription
-    ) {
+    if (checkoutMode === "NON_PRESCRIPTION" && product.requiresPrescription) {
       continue;
     }
 
@@ -112,7 +155,7 @@ export const createUserOrder = async (
         throw new ApiError(
           400,
           `An approved prescription is required for ${product.name}. ` +
-          `If you have recently re-uploaded a prescription, an admin must approve the new version before you can order.`,
+          `If you have recently re-uploaded a prescription, an admin must approve the new version before you can order.`
         );
       }
     }
@@ -121,20 +164,12 @@ export const createUserOrder = async (
     const price = Number(product.price);
 
     if (!Number.isInteger(quantity) || quantity <= 0) {
-      throw new ApiError(
-        400,
-        `Invalid quantity for ${product.name}`,
-      );
+      throw new ApiError(400, `Invalid quantity for ${product.name}`);
     }
 
     if (!Number.isFinite(price) || price < 0) {
-      throw new ApiError(
-        400,
-        `Invalid price for ${product.name}`,
-      );
+      throw new ApiError(400, `Invalid price for ${product.name}`);
     }
-
-   
 
     orderItems.push({
       productId: product._id,
@@ -152,35 +187,39 @@ export const createUserOrder = async (
 
   // This check must be outside the loop.
   if (orderItems.length === 0) {
-    throw new ApiError(
-      400,
-      "No eligible products found for checkout",
-    );
+    throw new ApiError(400, "No eligible products found for checkout");
   }
 
-  const totals = calculateTotals(
-    orderItems,
-    shippingCharge,
-    discount,
-  );
+  // ── Reserve inventory before persisting the order ──
+  // This ensures stock is held atomically; if insufficient, we abort early.
+  await reserveOrderInventory(orderItems);
 
-  const order = await createOrder({
-    orderNumber: generateOrderNumber(),
-    userId,
-    items: orderItems,
-    shippingAddress,
-    ...totals,
-    paymentMethod,
-    paymentStatus: "PENDING",
-    orderStatus: "PENDING",
-    statusHistory: [
-      {
-        status: "PENDING",
-        note: "Order created",
-        changedBy: userId,
-      },
-    ],
-  });
+  const totals = calculateTotals(orderItems, shippingCharge, discount);
+
+  let order;
+  try {
+    order = await createOrder({
+      orderNumber: generateOrderNumber(),
+      userId,
+      items: orderItems,
+      shippingAddress,
+      ...totals,
+      paymentMethod,
+      paymentStatus: "PENDING",
+      orderStatus: "PENDING",
+      statusHistory: [
+        {
+          status: "PENDING",
+          note: "Order created",
+          changedBy: userId,
+        },
+      ],
+    });
+  } catch (err) {
+    // Order DB write failed — release the inventory we just reserved
+    await releaseOrderInventory(orderItems);
+    throw err;
+  }
 
   // If the payment is COD, we can immediately remove the items from the cart
   // and consume the prescriptions. For ONLINE payment, we preserve them
@@ -197,7 +236,7 @@ export const createUserOrder = async (
     const prescriptionIds = orderItems
       .filter((i) => i.prescriptionId)
       .map((i) => i.prescriptionId);
-    
+
     if (prescriptionIds.length > 0) {
       await Prescription.updateMany(
         { _id: { $in: prescriptionIds } },
@@ -208,6 +247,10 @@ export const createUserOrder = async (
 
   return order;
 };
+
+// ─────────────────────────────────────────────────────────
+// USER-FACING READS
+// ─────────────────────────────────────────────────────────
 
 export async function getUserOrder(userId, orderId) {
   const order = await findById(orderId);
@@ -245,6 +288,10 @@ export async function getAdminOrders() {
   return findAllOrders();
 }
 
+// ─────────────────────────────────────────────────────────
+// ADMIN STATUS UPDATE — with inventory side-effects
+// ─────────────────────────────────────────────────────────
+
 export async function updateOrderStatus(orderId, status, note, changedBy) {
   const order = await findById(orderId);
 
@@ -264,6 +311,7 @@ export async function updateOrderStatus(orderId, status, note, changedBy) {
     throw new ApiError(400, "Cancelled order cannot be updated");
   }
 
+  const prevStatus = order.orderStatus;
   order.orderStatus = status;
 
   order.statusHistory.push({
@@ -275,16 +323,42 @@ export async function updateOrderStatus(orderId, status, note, changedBy) {
 
   if (status === "DELIVERED") {
     order.deliveredAt = new Date();
+    // Commit (consume) the reserved inventory when goods are delivered
+    await commitOrderInventory(order.items);
   }
 
   if (status === "CANCELLED") {
     order.cancelledAt = new Date();
+    // Release reserved stock so it becomes available again
+    // Only release if order was not yet delivered (delivered stock was already committed)
+    if (prevStatus !== "DELIVERED") {
+      await releaseOrderInventory(order.items);
+    }
+  }
+
+  if (status === "RETURNED") {
+    // On return: add the stock back (re-increment quantity) since it was
+    // already committed on delivery. Use incrementInventory via direct model update.
+    const { Inventory } = await import("../inventory/inventory.model.js");
+    await Promise.allSettled(
+      order.items.map((item) =>
+        Inventory.findOneAndUpdate(
+          { product: item.productId },
+          { $inc: { quantity: item.quantity } },
+          { runValidators: true }
+        )
+      )
+    );
   }
 
   await saveOrder(order);
 
   return order;
 }
+
+// ─────────────────────────────────────────────────────────
+// USER CANCELLATION — with inventory release
+// ─────────────────────────────────────────────────────────
 
 export async function cancelUserOrder(userId, orderId) {
   const order = await findById(orderId);
@@ -314,6 +388,9 @@ export async function cancelUserOrder(userId, orderId) {
     changedBy: userId,
     changedAt: new Date(),
   });
+
+  // Release reserved inventory so the stock is available to other customers
+  await releaseOrderInventory(order.items);
 
   await saveOrder(order);
 

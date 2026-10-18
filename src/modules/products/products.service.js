@@ -11,6 +11,7 @@ import {
 } from "./products.repository.js";
 
 import { findCategoryById } from "../categories/categories.repository.js";
+import { createInventory, deleteInventoryByProduct } from "../inventory/inventory.repository.js";
 
 
 export async function createProductService(data) {
